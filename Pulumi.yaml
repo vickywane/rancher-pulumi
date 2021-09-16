@@ -1,0 +1,3 @@
+name: rancher-pulumi-azure
+runtime: nodejs
+description: A minimal JavaScript Pulumi program with the native Azure provider
