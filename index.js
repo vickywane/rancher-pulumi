@@ -3,7 +3,7 @@ const pulumi = require("@pulumi/pulumi");
 const azure = require("@pulumi/azure-native");
 const fs = require("fs")
 
-const RANCHER_PREFIX = 'rancher-pulumi'
+const RANCHER_PREFIX = 'rancher-pulumi-test'
 
 // Create an Azure Resource Group
 const resourceGroup = new azure.resources.ResourceGroup(`${RANCHER_PREFIX}-group`);
@@ -18,11 +18,34 @@ const virtualNetwork = new azure.network.VirtualNetwork("virtualNetwork", {
     virtualNetworkName: `${RANCHER_PREFIX}-vnet`,
 });
 
+const networkSecurityGroup = new azure.network.NetworkSecurityGroup('networkSecurityGroup', {
+    location: 'westeurope',
+    networkSecurityGroupName: `${RANCHER_PREFIX}-security-group`,
+    resourceGroupName: resourceGroup.name,
+    securityRules: [
+        {
+            access: "Allow",
+            direction: "Inbound",
+            name: `${RANCHER_PREFIX}-security-group-rule-1`,
+            priority: 100,
+            protocol: "TCP",
+            destinationAddressPrefix: "*",
+            destinationPortRange: "*",
+            sourceAddressPrefix: "*",
+            sourcePortRange: "*",
+        }
+    ]
+})
+
 const subnet = new azure.network.Subnet("subnet", {
     addressPrefix: "10.0.0.0/16",
     resourceGroupName: resourceGroup.name,
     subnetName: `${RANCHER_PREFIX}-subnet`,
     virtualNetworkName: virtualNetwork.virtualNetworkName,
+    
+    networkSecurityGroup: {
+        id: networkSecurityGroup.id
+    }
 });
 
 const publicIPAddress = new azure.network.PublicIPAddress("publicIPAddress", {
@@ -37,6 +60,7 @@ const publicIPAddress = new azure.network.PublicIPAddress("publicIPAddress", {
 const networkInterface = new azure.network.NetworkInterface("networkInterface", {
     enableAcceleratedNetworking: true,
     ipConfigurations: [{
+        privateIPAllocationMethod: 'Dynamic',
         name: `${RANCHER_PREFIX}-ipconfig`,
         publicIPAddress: {
             id: publicIPAddress.id
@@ -50,11 +74,9 @@ const networkInterface = new azure.network.NetworkInterface("networkInterface", 
     resourceGroupName: resourceGroup.name,
 });
 
-// new azure.compute.L
-
 const virtualMachine = new azure.compute.VirtualMachine("virtualMachine", {
     hardwareProfile: {
-        vmSize: "Standard_D2s_v3",
+        vmSize: "Standard_D1_v2",
     },
     location: "westeurope",
     networkProfile: {
@@ -64,8 +86,12 @@ const virtualMachine = new azure.compute.VirtualMachine("virtualMachine", {
         }],
     },
     osProfile: {
+        customData: fs.readFileSync("./installation.sh", {
+            encoding: "base64"
+        }),
         adminPassword: "IamDavid01!~",
         adminUsername: `${RANCHER_PREFIX}-admin`,
+        computerName: `${RANCHER_PREFIX}-computer`,
         linuxConfiguration: {
             patchSettings: {
                 assessmentMode: "ImageDefault",
@@ -73,6 +99,7 @@ const virtualMachine = new azure.compute.VirtualMachine("virtualMachine", {
             provisionVMAgent: true,
         },
     },
+
     resourceGroupName: resourceGroup.name,
     storageProfile: {
         imageReference: {
@@ -85,7 +112,7 @@ const virtualMachine = new azure.compute.VirtualMachine("virtualMachine", {
             caching: "ReadWrite",
             createOption: "FromImage",
             managedDisk: {
-                storageAccountType: "Premium_LRS",
+                storageAccountType: "Standard_LRS",
             },
             name: `${RANCHER_PREFIX}-disk`,
         },
@@ -93,31 +120,6 @@ const virtualMachine = new azure.compute.VirtualMachine("virtualMachine", {
     subnet: subnet.id,
     vmName: `${RANCHER_PREFIX}-vm`,
 });
-
-
-// const linuxVirtualMachine = new azure.compute.LinuxVirtualMachine("linuxVirtualMachine", {
-//     resourceGroupName: resourceGroup.name,
-//     location: resourceGroup.location,
-//     size: "Standard_F2",
-//     adminUsername: `${RANCHER_PREFIX}-admin`,
-//     adminPassword: "IamDavid01!~",
-//     networkInterfaceIds: [networkInterface.id],
-//     // adminSshKeys: [{
-//     //     username: "adminuser",
-//     //     publicKey: fs.readFileSync("~/.ssh/id_rsa.pub"),
-//     // }],
-//     customData: fs.readFileSync("./installation.sh"),
-//     osDisk: {
-//         caching: "ReadWrite",
-//         storageAccountType: "Standard_LRS",
-//     },
-//     sourceImageReference: {
-//         publisher: "Canonical",
-//         offer: "UbuntuServer",
-//         sku: "16.04-LTS",
-//         version: "latest",
-//     },
-// });
 
 
 // // Create an Azure resource (Storage Account)
